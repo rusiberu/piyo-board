@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#fff7ed">
+<title>ぴよボード</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ぴよボード">
+<style>
+  /* ---- 色はここでまとめて定義（夜間モードで切り替える）---- */
+  :root {
+    --bg: #fff7ed; --card: #fff; --text: #3b2f2f; --sub: #8a7a6a;
+    --line: #f3e8dc; --accent: #f97316; --warn: #dc2626; --sleep: #4f46e5;
+    --shadow: rgba(0,0,0,.06);
+  }
+  body.night {
+    --bg: #1a1614; --card: #262120; --text: #e8dfd6; --sub: #a08f80;
+    --line: #3a3230; --accent: #c2410c; --warn: #f87171; --sleep: #a5b4fc;
+    --shadow: rgba(0,0,0,.4);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 16px; max-width: 520px;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: var(--sub); margin-bottom: 16px; }
+  button {
+    font: inherit; border: none; border-radius: 10px;
+    padding: 12px 16px; cursor: pointer; background: var(--accent); color: #fff;
+  }
+  button.ghost { background: transparent; color: var(--sub); padding: 6px 8px; font-size: 12px; }
+  button.icon { background: transparent; font-size: 20px; padding: 4px 8px; }
+  input[type=url], select {
+    width: 100%; font: inherit; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--line); margin-bottom: 12px; background: var(--card); color: var(--text);
+  }
+  .hidden { display: none; }
+
+  /* ---- 経過時間カード ---- */
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card {
+    background: var(--card); border-radius: 14px; padding: 14px;
+    box-shadow: 0 1px 3px var(--shadow);
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card .label { font-size: 13px; color: var(--sub); }
+  .card .big { font-size: 30px; font-weight: 700; margin: 4px 0 2px; line-height: 1.1; }
+  .card .big small { font-size: 16px; font-weight: 500; }
+  .card .note { font-size: 12px; color: var(--sub); }
+  .card.warn .big { color: var(--warn); }
+  .card.sleep .big { color: var(--sleep); }
+  .card .next { font-size: 13px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+  .card .next b { color: var(--accent); }
+
+  /* ---- 合計 ---- */
+  .totals { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
+  .totals b { font-size: 18px; }
+
+  /* ---- 24時間タイムラインバー ---- */
+  .bar-wrap { margin-top: 8px; }
+  .bar { position: relative; height: 34px; background: var(--line); border-radius: 8px; overflow: hidden; }
+  .bar .sleep-span { position: absolute; top: 0; bottom: 0; background: var(--sleep); opacity: .35; }
+  .bar .dot { position: absolute; width: 4px; border-radius: 2px; transform: translateX(-2px); }
+  .bar .dot.feed { top: 3px; height: 10px; background: var(--accent); }
+  .bar .dot.pee  { top: 15px; height: 7px; background: #38bdf8; }
+  .bar .dot.poop { top: 24px; height: 7px; background: #a16207; }
+  .bar .now { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--warn); }
+  .bar-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--sub); margin-top: 3px; }
+  .legend { font-size: 11px; color: var(--sub); margin-top: 4px; }
+  .legend span { display: inline-block; margin-right: 10px; }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 3px; vertical-align: middle; }
+
+  /* ---- タイムライン一覧 ---- */
+  h2 { font-size: 15px; margin: 22px 0 8px; color: var(--sub); }
+  .timeline { background: var(--card); border-radius: 14px; padding: 6px 14px; }
+  .row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .row:last-child { border-bottom: none; }
+  .row .time { color: var(--sub); width: 48px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .row .memo { color: var(--sub); font-size: 12px; }
+
+  .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .actions button { flex: 1; font-size: 14px; }
+  .status { font-size: 12px; color: var(--sub); text-align: center; margin-top: 12px; }
+  .error { background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 10px; margin-bottom: 12px; }
+  .settings { margin-top: 20px; font-size: 13px; color: var(--sub); }
+  .settings label { display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🐥 ぴよボード</h1>
+  <button class="icon" id="nightBtn" title="夜間モード">🌙</button>
+</div>
+<div class="sub">ぴよログの記録から「最後から何分経った？」を表示します</div>
+
+<!-- ===== 初回設定：フィードURLを入力 ===== -->
+<section id="setup">
+  <p style="font-size:14px">
+    ぴよログアプリの <b>設定 → データフィード</b> で作成したURLを貼り付けてください。<br>
+    URLはこのスマホ（ブラウザ）の中にだけ保存されます。
+  </p>
+  <input type="url" id="feedUrlInput" placeholder="https://feed.piyolog.com/v1/feed/24h/...">
+  <button id="saveBtn">保存して表示する</button>
+</section>
+
+<!-- ===== メイン画面 ===== -->
+<section id="board" class="hidden">
+  <div id="errorBox" class="error hidden"></div>
+
+  <div class="cards">
+    <div class="card wide" id="cardFeed">
+      <div class="label">🍼 最後の授乳</div>
+      <div class="big">--</div>
+      <div class="note"></div>
+      <div class="next hidden"></div>
+    </div>
+    <div class="card sleep" id="cardSleep">
+      <div class="label">😴 睡眠</div>
+      <div class="big">--</div>
+      <div class="note"></div>
+    </div>
+    <div class="card" id="cardPoop">
+      <div class="label">💩 最後のうんち</div>
+      <div class="big">--</div>
+      <div class="note"></div>
+    </div>
+    <div class="card" id="cardPee">
+      <div class="label">💧 最後のおしっこ</div>
+      <div class="big">--</div>
+      <div class="note"></div>
+    </div>
+    <div class="card hidden" id="cardMeasure">
+      <div class="label">🌡️ 最新の計測</div>
+      <div class="note" style="font-size:14px;color:var(--text)"></div>
+    </div>
+    <div class="card wide">
+      <div class="label">📊 過去24時間の合計</div>
+      <div class="totals" id="totals"></div>
+      <div class="bar-wrap">
+        <div class="bar" id="bar"></div>
+        <div class="bar-labels" id="barLabels"></div>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>授乳</span>
+          <span><i style="background:#38bdf8"></i>おしっこ</span>
+          <span><i style="background:#a16207"></i>うんち</span>
+          <span><i style="background:var(--sleep);opacity:.5"></i>睡眠</span>
+          <span><i style="background:var(--warn)"></i>今</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="copyBtn">📋 まとめをコピー</button>
+  </div>
+
+  <h2>記録一覧（新しい順）</h2>
+  <div class="timeline" id="timeline"></div>
+
+  <div class="settings">
+    <label for="warnSelect">授乳から何時間空いたら赤くする？</label>
+    <select id="warnSelect">
+      <option value="120">2時間</option>
+      <option value="150">2時間30分</option>
+      <option value="180">3時間</option>
+      <option value="210">3時間30分</option>
+      <option value="240">4時間</option>
+    </select>
+  </div>
+
+  <div class="status">
+    <span id="updatedAt"></span>
+    <button class="ghost" id="reloadBtn">今すぐ更新</button>
+    <button class="ghost" id="changeUrlBtn">URLを変更</button>
+  </div>
+</section>
+
+<script>
+// ===== 記録の種類 → 表示名 =====
+// ぴよログのデータフィード仕様に合わせた英語名 → 日本語
+const TYPE_LABEL = {
+  BreastFeeding: '母乳', Formula: 'ミルク', ExpressedBreastMilk: '搾母乳', Pumping: '搾乳',
+  Sleep: '寝る', WakeUp: '起きる', Pee: 'おしっこ', Poop: 'うんち',
+  Temperature: '体温', Height: '身長', Weight: '体重', Head: '頭囲', Chest: '胸囲', Foot: '足サイズ',
+  Solid: '離乳食', Snack: 'おやつ', Meal: 'ごはん', Drink: 'のみもの',
+  Vaccine: '予防接種', Memo: 'メモ',
+  Medicine: 'くすり', Hospital: '病院', Injury: 'けが', Rash: '発疹', Cough: 'せき',
+  Vomit: '吐く', Bath: 'お風呂', Walk: 'さんぽ', Milestone: 'できた',
+};
+const TYPE_ICON = {
+  BreastFeeding: '🤱', Formula: '🍼', ExpressedBreastMilk: '🍼', Pumping: '🫙',
+  Sleep: '😴', WakeUp: '☀️', Pee: '💧', Poop: '💩', Temperature: '🌡️',
+  Weight: '⚖️', Height: '📏', Bath: '🛁', Memo: '📝', Medicine: '💊', Hospital: '🏥',
+};
+// うんちの詳細（量・かたさ・色）の日本語
+const POOP_LABEL = {
+  minimum: 'ちょっと', small: '少なめ', normal: 'ふつう', large: '多め',
+  diarrhea: '下痢', soft: 'やわらかめ', hard: 'かため',
+  white: '白', yellow: '黄', orange: 'オレンジ', brown: '茶', green: '緑', red: '赤', black: '黒',
+};
+// 「授乳」としてまとめて扱う種類
+const FEED_TYPES = ['BreastFeeding', 'Formula', 'ExpressedBreastMilk'];
+// 「計測」としてまとめて扱う種類
+const MEASURE_TYPES = ['Temperature', 'Weight', 'Height', 'Head', 'Chest'];
+
+// ===== 状態 =====
+let records = [];        // 取得した記録（時系列昇順）
+let range = null;        // フィードの期間 { from, to }
+let lastFetched = null;  // 最後に取得した時刻
+
+// 設定（localStorageに保存）
+const getWarnMinutes = () => Number(localStorage.getItem('piyoWarnMin') || 180);
+
+// ===== 画面切り替え =====
+const $ = (sel) => document.querySelector(sel);
+
+function showSetup() {
+  $('#setup').classList.remove('hidden');
+  $('#board').classList.add('hidden');
+  $('#feedUrlInput').value = localStorage.getItem('piyoFeedUrl') || '';
+}
+function showBoard() {
+  $('#setup').classList.add('hidden');
+  $('#board').classList.remove('hidden');
+}
+
+$('#saveBtn').addEventListener('click', () => {
+  const url = $('#feedUrlInput').value.trim();
+  if (!url.startsWith('https://feed.piyolog.com/')) {
+    alert('ぴよログのデータフィードURL（https://feed.piyolog.com/... ）を入力してください');
+    return;
+  }
+  localStorage.setItem('piyoFeedUrl', url);
+  showBoard();
+  fetchFeed();
+});
+$('#changeUrlBtn').addEventListener('click', showSetup);
+$('#reloadBtn').addEventListener('click', fetchFeed);
+
+// 授乳の目安時間の設定
+$('#warnSelect').value = getWarnMinutes();
+$('#warnSelect').addEventListener('change', (e) => {
+  localStorage.setItem('piyoWarnMin', e.target.value);
+  render();
+});
+
+// 夜間モード
+function applyNight() {
+  const on = localStorage.getItem('piyoNight') === '1';
+  document.body.classList.toggle('night', on);
+  $('#nightBtn').textContent = on ? '☀️' : '🌙';
+}
+$('#nightBtn').addEventListener('click', () => {
+  localStorage.setItem('piyoNight', document.body.classList.contains('night') ? '0' : '1');
+  applyNight();
+});
+applyNight();
+
+// まとめをコピー
+$('#copyBtn').addEventListener('click', async () => {
+  const text = summaryText();
+  try {
+    await navigator.clipboard.writeText(text);
+    $('#copyBtn').textContent = '✅ コピーしました';
+  } catch {
+    prompt('コピーできなかったので、手動で選択してください', text);
+  }
+  setTimeout(() => { $('#copyBtn').textContent = '📋 まとめをコピー'; }, 1500);
+});
+
+// ===== データ取得 =====
+async function fetchFeed() {
+  const url = localStorage.getItem('piyoFeedUrl');
+  if (!url) return;
+  const errorBox = $('#errorBox');
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      // 公式仕様のエラーコードに合わせたメッセージ
+      const msg = {
+        404: 'フィードが見つかりません。URLの間違い・有効期限切れ・削除済みでないか確認してください。',
+        429: 'アクセスが多すぎます。少し待ってから更新してください。',
+      }[res.status] || `取得に失敗しました（HTTP ${res.status}）`;
+      throw new Error(msg);
+    }
+    const json = await res.json();
+    records = json.records || [];
+    range = json.range;
+    lastFetched = new Date();
+    errorBox.classList.add('hidden');
+    render();
+  } catch (e) {
+    errorBox.textContent = e.message || '通信エラーです';
+    errorBox.classList.remove('hidden');
+  }
+}
+
+// ===== 時間の整形 =====
+function fmtTime(d) {
+  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+}
+// 経過時間を「1時間25分」形式に（HTML用）
+function fmtElapsed(ms) {
+  const min = Math.max(0, Math.floor(ms / 60000));
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h === 0) return `${m}<small>分</small>`;
+  return `${h}<small>時間</small>${m}<small>分</small>`;
+}
+// 経過時間を「1時間25分」形式に（テキスト用）
+function fmtMinutes(min) {
+  min = Math.round(min);
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h}時間${m}分` : `${m}分`;
+}
+// 母乳の左右秒数 → 「左10分 右8分」
+function fmtBreast(r) {
+  const l = Math.round((r.leftTime || 0) / 60), rt = Math.round((r.rightTime || 0) / 60);
+  const parts = [];
+  if (l) parts.push(`左${l}分`);
+  if (rt) parts.push(`右${rt}分`);
+  if (r.value) parts.push(`${r.value}ml`);
+  return parts.join(' ');
+}
+// うんちの詳細 → 「ふつう・やわらかめ・黄」
+function fmtPoop(r) {
+  const d = r.details || {};
+  return [d.amount, d.hardness, d.color].filter(Boolean).map(v => POOP_LABEL[v] || v).join('・');
+}
+// 各記録の詳細テキスト
+function detailText(r) {
+  switch (r.type) {
+    case 'BreastFeeding': return fmtBreast(r);
+    case 'Poop': return fmtPoop(r);
+    case 'Formula': case 'ExpressedBreastMilk': case 'Pumping': case 'Drink':
+      return r.value ? `${r.value}ml` : '';
+    case 'Temperature': return r.value ? `${r.value}℃` : '';
+    case 'Weight': return r.value ? `${r.value}kg` : '';
+    case 'Height': case 'Head': case 'Chest': return r.value ? `${r.value}cm` : '';
+    default: return '';
+  }
+}
+
+// ===== 計算 =====
+// 指定した種類のうち、いちばん新しい記録を返す
+const last = (types) => [...records].reverse().find(r => types.includes(r.type));
+
+// 授乳の平均間隔（分）。記録が2回未満なら null
+function avgFeedInterval() {
+  const times = records.filter(r => FEED_TYPES.includes(r.type)).map(r => new Date(r.datetime).getTime());
+  if (times.length < 2) return null;
+  const gaps = [];
+  for (let i = 1; i < times.length; i++) gaps.push((times[i] - times[i - 1]) / 60000);
+  return gaps.reduce((a, b) => a + b, 0) / gaps.length;
+}
+
+// 「寝る」→「起きる」のペアを [開始, 終了] の配列で返す（寝ている途中なら終了は今）
+function sleepSpans(now) {
+  const spans = [];
+  let start = null;
+  for (const r of records) {
+    if (r.type === 'Sleep') start = new Date(r.datetime);
+    if (r.type === 'WakeUp' && start) { spans.push([start, new Date(r.datetime)]); start = null; }
+  }
+  if (start) spans.push([start, now]);
+  return spans;
+}
+function sleepTotalText(now) {
+  const ms = sleepSpans(now).reduce((s, [a, b]) => s + (b - a), 0);
+  return fmtMinutes(ms / 60000);
+}
+
+// ===== 描画 =====
+function render() {
+  const now = new Date();
+
+  // --- 最後の授乳 + 次の目安 ---
+  const feed = last(FEED_TYPES);
+  const cardFeed = $('#cardFeed');
+  const nextBox = cardFeed.querySelector('.next');
+  if (feed) {
+    const d = new Date(feed.datetime);
+    const elapsed = now - d;
+    cardFeed.querySelector('.big').innerHTML = fmtElapsed(elapsed) + '<small>前</small>';
+    cardFeed.querySelector('.note').textContent = `${fmtTime(d)} ${TYPE_LABEL[feed.type]} ${detailText(feed)}`;
+    cardFeed.classList.toggle('warn', elapsed > getWarnMinutes() * 60000);
+
+    // 次の授乳の目安（平均間隔から）と、母乳なら次に始める側
+    const parts = [];
+    const avg = avgFeedInterval();
+    if (avg) {
+      const nextTime = new Date(d.getTime() + avg * 60000);
+      parts.push(`次はだいたい <b>${fmtTime(nextTime)}</b> ごろ（平均間隔 ${fmtMinutes(avg)}）`);
+    }
+    if (feed.type === 'BreastFeeding' && feed.last) {
+      // last は「最後に飲ませた側」。次はその反対から
+      parts.push(`次は <b>${feed.last === 'right' ? '左' : '右'}</b> から`);
+    }
+    nextBox.innerHTML = parts.join('<br>');
+    nextBox.classList.toggle('hidden', parts.length === 0);
+  } else {
+    cardFeed.querySelector('.big').textContent = '--';
+    cardFeed.querySelector('.note').textContent = '24時間以内の記録なし';
+    nextBox.classList.add('hidden');
+  }
+
+  // --- 睡眠（最後が「寝る」なら寝ている、「起きる」なら起きている）---
+  const sleepEv = last(['Sleep', 'WakeUp']);
+  const cardSleep = $('#cardSleep');
+  if (sleepEv) {
+    const d = new Date(sleepEv.datetime);
+    const sleeping = sleepEv.type === 'Sleep';
+    cardSleep.querySelector('.label').textContent = sleeping ? '😴 寝てから' : '☀️ 起きてから';
+    cardSleep.querySelector('.big').innerHTML = fmtElapsed(now - d);
+    cardSleep.querySelector('.note').textContent = `${fmtTime(d)} に${sleeping ? '寝た' : '起きた'}`;
+  } else {
+    cardSleep.querySelector('.label').textContent = '😴 睡眠';
+    cardSleep.querySelector('.big').textContent = '--';
+    cardSleep.querySelector('.note').textContent = '24時間以内の記録なし';
+  }
+
+  // --- おしっこ・うんち ---
+  for (const [id, type] of [['#cardPee', 'Pee'], ['#cardPoop', 'Poop']]) {
+    const ev = last([type]);
+    const card = $(id);
+    if (ev) {
+      const d = new Date(ev.datetime);
+      card.querySelector('.big').innerHTML = fmtElapsed(now - d) + '<small>前</small>';
+      card.querySelector('.note').textContent = `${fmtTime(d)} ${detailText(ev)}`;
+    } else {
+      card.querySelector('.big').textContent = '--';
+      card.querySelector('.note').textContent = '記録なし';
+    }
+  }
+
+  // --- 最新の計測（あるときだけ表示）---
+  const measures = MEASURE_TYPES.map(t => last([t])).filter(Boolean);
+  const cardMeasure = $('#cardMeasure');
+  cardMeasure.classList.toggle('hidden', measures.length === 0);
+  cardMeasure.querySelector('.note').innerHTML = measures
+    .map(r => `${TYPE_LABEL[r.type]} <b>${detailText(r)}</b> <span style="color:var(--sub);font-size:11px">${fmtTime(new Date(r.datetime))}</span>`)
+    .join('<br>');
+
+  // --- 24時間の合計 ---
+  const count = (t) => records.filter(r => r.type === t).length;
+  const sumMl = (t) => records.filter(r => r.type === t).reduce((s, r) => s + (r.value || 0), 0);
+  const feedCount = records.filter(r => FEED_TYPES.includes(r.type)).length;
+  const totals = [
+    `授乳 <b>${feedCount}</b>回`,
+    sumMl('Formula') ? `ミルク <b>${sumMl('Formula')}</b>ml` : '',
+    `おしっこ <b>${count('Pee')}</b>回`,
+    `うんち <b>${count('Poop')}</b>回`,
+    `睡眠 <b>${sleepTotalText(now)}</b>`,
+  ].filter(Boolean);
+  $('#totals').innerHTML = totals.map(t => `<span>${t}</span>`).join('');
+
+  renderBar(now);
+
+  // --- タイムライン一覧 ---
+  const rows = [...records].reverse().map(r => {
+    const d = new Date(r.datetime);
+    const icon = TYPE_ICON[r.type] || '・';
+    const label = TYPE_LABEL[r.type] || r.type;
+    const memo = r.memo ? `<span class="memo">${escapeHtml(r.memo)}</span>` : '';
+    return `<div class="row"><span class="time">${fmtTime(d)}</span><span>${icon} ${label} ${detailText(r)} ${memo}</span></div>`;
+  });
+  $('#timeline').innerHTML = rows.join('') || '<div class="row">記録がありません</div>';
+
+  $('#updatedAt').textContent = lastFetched ? `更新: ${fmtTime(lastFetched)}` : '';
+}
+
+// 24時間タイムラインバー：左端が24時間前、右端が今
+function renderBar(now) {
+  const end = now.getTime();
+  const start = end - 24 * 60 * 60 * 1000;
+  // 時刻 → バー上の位置（%）
+  const pos = (t) => Math.min(100, Math.max(0, (t - start) / (end - start) * 100));
+
+  const parts = [];
+  for (const [a, b] of sleepSpans(now)) {
+    parts.push(`<div class="sleep-span" style="left:${pos(a)}%;width:${pos(b) - pos(a)}%"></div>`);
+  }
+  for (const r of records) {
+    const t = new Date(r.datetime).getTime();
+    let cls = null;
+    if (FEED_TYPES.includes(r.type)) cls = 'feed';
+    else if (r.type === 'Pee') cls = 'pee';
+    else if (r.type === 'Poop') cls = 'poop';
+    if (cls) parts.push(`<div class="dot ${cls}" style="left:${pos(t)}%"></div>`);
+  }
+  parts.push(`<div class="now" style="left:${pos(end)}%"></div>`);
+  $('#bar').innerHTML = parts.join('');
+
+  // 目盛り：24時間前・18・12・6時間前・今 の時刻
+  const labels = [24, 18, 12, 6, 0].map(h => fmtTime(new Date(end - h * 3600000)));
+  $('#barLabels').innerHTML = labels.map(l => `<span>${l}</span>`).join('');
+}
+
+// パートナーに送る用のまとめテキスト
+function summaryText() {
+  const now = new Date();
+  const feed = last(FEED_TYPES), pee = last(['Pee']), poop = last(['Poop']);
+  const feedCount = records.filter(r => FEED_TYPES.includes(r.type)).length;
+  const lines = [
+    `🐥 ぴよボード ${now.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} ${fmtTime(now)} 時点（過去24時間）`,
+    feed ? `🍼 最後の授乳: ${fmtTime(new Date(feed.datetime))} ${TYPE_LABEL[feed.type]} ${detailText(feed)}（${fmtMinutes((now - new Date(feed.datetime)) / 60000)}前）` : '🍼 授乳: 記録なし',
+    pee ? `💧 最後のおしっこ: ${fmtTime(new Date(pee.datetime))}` : '',
+    poop ? `💩 最後のうんち: ${fmtTime(new Date(poop.datetime))} ${detailText(poop)}` : '',
+    `📊 授乳${feedCount}回 / おしっこ${records.filter(r => r.type === 'Pee').length}回 / うんち${records.filter(r => r.type === 'Poop').length}回 / 睡眠 ${sleepTotalText(now)}`,
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+// メモに記号が入っていても画面を壊さないようにする
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ===== 起動 =====
+if (localStorage.getItem('piyoFeedUrl')) {
+  showBoard();
+  fetchFeed();
+} else {
+  showSetup();
+}
+// 1分ごとにデータを再取得（公式推奨のアクセス頻度）
+setInterval(fetchFeed, 60 * 1000);
+// 経過時間の表示は20秒ごとに更新（通信なし）
+setInterval(() => { if (records.length) render(); }, 20 * 1000);
+// アプリに戻ってきたときにも更新
+document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchFeed(); });
+</script>
+</body>
+</html>

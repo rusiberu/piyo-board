@@ -1,0 +1,9 @@
+{
+  "name": "ぴよボード",
+  "short_name": "ぴよボード",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fff7ed",
+  "theme_color": "#fff7ed",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
