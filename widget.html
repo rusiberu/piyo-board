@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ぴよボード ウィジェット</title>
+<style>
+  /* ウィジェットの枠に収める用の、小さくて濃い表示 */
+  :root {
+    --bg: #fff7ed; --card: #fff; --text: #3b2f2f; --sub: #8a7a6a;
+    --line: #f3e8dc; --accent: #ea580c; --warn: #dc2626; --sleep: #4f46e5;
+  }
+  /* Androidのダークテーマに自動で合わせる */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1614; --card: #262120; --text: #e8dfd6; --sub: #a08f80;
+      --line: #3a3230; --accent: #fb923c; --warn: #f87171; --sleep: #a5b4fc;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, "Noto Sans JP", sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 10px 12px;
+    font-size: 13px;
+    overflow: hidden;   /* ウィジェット内でスクロールさせない */
+  }
+  .clock { font-size: 30px; font-weight: 700; line-height: 1.05; }
+  .clock .icon { font-size: 20px; }
+  .elapsed { font-size: 12px; color: var(--sub); margin-top: 1px; }
+  .elapsed.warn { color: var(--warn); }
+  .next { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 5px; }
+  .row { display: flex; gap: 12px; margin-top: 6px; font-size: 13px; }
+  .counts { font-size: 11px; color: var(--sub); margin-top: 4px; }
+  .foot { font-size: 10px; color: var(--sub); margin-top: 3px; }
+  .err { color: var(--warn); font-size: 12px; }
+  input { width: 100%; font: inherit; padding: 8px; margin-bottom: 6px;
+          border: 1px solid var(--line); border-radius: 8px;
+          background: var(--card); color: var(--text); }
+  button { font: inherit; padding: 8px 12px; border: none; border-radius: 8px;
+           background: var(--accent); color: #fff; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- URLが未登録のときだけ出る入力欄 -->
+<div id="setup" class="hidden">
+  <div style="font-size:11px;color:var(--sub);margin-bottom:5px">ぴよログのフィードURLを貼り付け</div>
+  <input type="url" id="urlInput" placeholder="https://feed.piyolog.com/...">
+  <button id="saveBtn">保存</button>
+</div>
+
+<div id="view" class="hidden">
+  <div class="clock" id="clock">--</div>
+  <div class="elapsed" id="elapsed"></div>
+  <div class="next" id="next"></div>
+  <div class="row" id="row"></div>
+  <div class="counts" id="counts"></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<div id="err" class="err hidden"></div>
+
+<script>
+// ===== 設定 =====
+const FEED_TYPES = ['BreastFeeding', 'Formula', 'ExpressedBreastMilk'];
+const TYPE_LABEL = {
+  BreastFeeding: '母乳', Formula: 'ミルク', ExpressedBreastMilk: '搾母乳',
+  Pee: 'おしっこ', Poop: 'うんち', Sleep: '寝る', WakeUp: '起きる',
+};
+const WARN_MINUTES = 180;
+
+const $ = (s) => document.querySelector(s);
+let records = [];
+
+// ===== フィードURLの取得 =====
+// 優先順： ?url=... （ウィジェットアプリのWebViewが本体と別保存の場合用）
+//        → localStorage（本体ページと同じ保存先。同じブラウザなら入力不要）
+function getUrl() {
+  const q = new URLSearchParams(location.search).get('url');
+  if (q) return q.trim();
+  try { return localStorage.getItem('piyoFeedUrl') || ''; } catch { return ''; }
+}
+
+$('#saveBtn').addEventListener('click', () => {
+  const url = $('#urlInput').value.trim();
+  if (!url.startsWith('https://feed.piyolog.com/')) { alert('ぴよログのフィードURLを入力してください'); return; }
+  try { localStorage.setItem('piyoFeedUrl', url); } catch {}
+  $('#setup').classList.add('hidden');
+  load();
+});
+
+// ===== 取得 =====
+async function load() {
+  const url = getUrl();
+  if (!url) { $('#setup').classList.remove('hidden'); return; }
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.status === 404 ? 'フィード切れ' : res.status === 429 ? '待ってから再試行' : 'HTTP ' + res.status);
+    records = (await res.json()).records || [];
+    $('#err').classList.add('hidden');
+    $('#view').classList.remove('hidden');
+    render();
+  } catch (e) {
+    $('#err').textContent = '🐥 ' + (e.message || '通信エラー');
+    $('#err').classList.remove('hidden');
+  }
+}
+
+// ===== 表示 =====
+const last = (types) => [...records].reverse().find(r => types.includes(r.type));
+const fmtTime = (d) => d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+function fmtMinutes(min) {
+  min = Math.max(0, Math.round(min));
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h}時間${m}分` : `${m}分`;
+}
+function detail(r) {
+  if (r.type === 'BreastFeeding') {
+    const l = Math.round((r.leftTime || 0) / 60), rt = Math.round((r.rightTime || 0) / 60);
+    return [l ? `左${l}分` : '', rt ? `右${rt}分` : ''].filter(Boolean).join('');
+  }
+  return r.value ? `${r.value}ml` : '';
+}
+function avgFeedInterval() {
+  const t = records.filter(r => FEED_TYPES.includes(r.type)).map(r => new Date(r.datetime).getTime());
+  if (t.length < 2) return null;
+  let sum = 0;
+  for (let i = 1; i < t.length; i++) sum += t[i] - t[i - 1];
+  return sum / (t.length - 1) / 60000;
+}
+
+function render() {
+  const now = new Date();
+  const feed = last(FEED_TYPES);
+
+  // 授乳の「時刻」を主役に（経過時間は更新が遅れると古くなるため）
+  if (feed) {
+    const d = new Date(feed.datetime);
+    const mins = (now - d) / 60000;
+    $('#clock').innerHTML = `<span class="icon">🍼</span> ${fmtTime(d)}`;
+    $('#elapsed').textContent = `${fmtMinutes(mins)}前・${TYPE_LABEL[feed.type] || feed.type} ${detail(feed)}`;
+    $('#elapsed').classList.toggle('warn', mins > WARN_MINUTES);
+
+    const bits = [];
+    const avg = avgFeedInterval();
+    if (avg) bits.push(`次 ${fmtTime(new Date(d.getTime() + avg * 60000))}ごろ`);
+    if (feed.type === 'BreastFeeding' && feed.last) bits.push(`${feed.last === 'right' ? '左' : '右'}から`);
+    $('#next').textContent = bits.join('・');
+  } else {
+    $('#clock').innerHTML = '<span class="icon">🍼</span> 記録なし';
+    $('#elapsed').textContent = '';
+    $('#next').textContent = '';
+  }
+
+  // おしっこ・うんちも時刻で
+  const pee = last(['Pee']), poop = last(['Poop']);
+  $('#row').innerHTML = [['💧', pee], ['💩', poop]]
+    .map(([i, ev]) => `<span>${i} ${ev ? fmtTime(new Date(ev.datetime)) : '--'}</span>`).join('');
+
+  const c = (t) => records.filter(r => r.type === t).length;
+  $('#counts').textContent = `24h: 授乳${records.filter(r => FEED_TYPES.includes(r.type)).length} / 💧${c('Pee')} / 💩${c('Poop')}`;
+  $('#foot').textContent = `${fmtTime(now)} 時点`;
+}
+
+// ===== 起動 =====
+load();
+setInterval(load, 60 * 1000);                                    // 1分ごとに再取得
+setInterval(() => { if (records.length) render(); }, 20 * 1000);  // 経過時間だけ更新
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>
