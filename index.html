@@ -28,6 +28,40 @@
     font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
     background: var(--bg); color: var(--text);
     padding: 16px; max-width: 520px;
+    /* zoom はページ全体を拡大する指定。🔍ボタンで倍率を変える */
+    zoom: var(--zoom, 1);
+  }
+
+  /* ---- PCなど画面が広いとき：横幅も文字も大きくする ---- */
+  @media (min-width: 700px) {
+    body { max-width: 820px; padding: 28px; }
+    h1 { font-size: 26px; }
+    .sub { font-size: 14px; margin-bottom: 20px; }
+    .cards { gap: 16px; }
+    .card { padding: 20px; border-radius: 18px; }
+    .card .label { font-size: 16px; }
+    .card .big { font-size: 52px; }
+    .card .big small { font-size: 26px; }
+    .card .note { font-size: 15px; }
+    .card .next { font-size: 18px; margin-top: 10px; padding-top: 10px; }
+    .totals { font-size: 18px; gap: 10px 24px; }
+    .totals b { font-size: 28px; }
+    .bar { height: 48px; }
+    .bar .dot.feed { top: 5px; height: 14px; }
+    .bar .dot.pee { top: 21px; height: 10px; }
+    .bar .dot.poop { top: 34px; height: 10px; }
+    .bar-labels { font-size: 13px; }
+    .legend { font-size: 14px; }
+    .legend i { width: 11px; height: 11px; }
+    h2 { font-size: 18px; }
+    .timeline { padding: 8px 20px; }
+    .row { font-size: 17px; padding: 10px 0; }
+    .row .time { width: 64px; }
+    .row .memo { font-size: 15px; }
+    .actions button { font-size: 17px; padding: 14px; }
+    .status, .settings { font-size: 15px; }
+    button.ghost { font-size: 14px; }
+    button.icon { font-size: 26px; }
   }
   h1 { font-size: 20px; margin: 0; }
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
@@ -98,7 +132,10 @@
 
 <div class="header">
   <h1>🐥 ぴよボード</h1>
-  <button class="icon" id="nightBtn" title="夜間モード">🌙</button>
+  <span>
+    <button class="icon" id="sizeBtn" title="表示サイズ">🔍</button>
+    <button class="icon" id="nightBtn" title="夜間モード">🌙</button>
+  </span>
 </div>
 <div class="sub">ぴよログの記録から「最後から何分経った？」を表示します</div>
 
@@ -252,6 +289,23 @@ $('#warnSelect').addEventListener('change', (e) => {
   localStorage.setItem('piyoWarnMin', e.target.value);
   render();
 });
+
+// 表示サイズ（PCで少し離れて見るとき用）。押すたびに 標準 → 大 → 特大 → 標準
+const ZOOMS = [1, 1.4, 1.9];
+const ZOOM_LABEL = ['🔍', '大', '特大'];
+function applyZoom() {
+  let i = Number(localStorage.getItem('piyoZoomStep') || 0);
+  if (!(i >= 0 && i < ZOOMS.length)) i = 0;
+  document.documentElement.style.setProperty('--zoom', ZOOMS[i]);
+  $('#sizeBtn').textContent = ZOOM_LABEL[i];
+  $('#sizeBtn').title = `表示サイズ（${['標準', '大', '特大'][i]}）`;
+}
+$('#sizeBtn').addEventListener('click', () => {
+  const i = Number(localStorage.getItem('piyoZoomStep') || 0);
+  localStorage.setItem('piyoZoomStep', (i + 1) % ZOOMS.length);
+  applyZoom();
+});
+applyZoom();
 
 // 夜間モード
 function applyNight() {
